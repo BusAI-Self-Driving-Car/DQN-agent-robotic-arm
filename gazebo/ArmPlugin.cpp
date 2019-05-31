@@ -37,20 +37,21 @@
 
 #define INPUT_WIDTH   512
 #define INPUT_HEIGHT  512
-#define OPTIMIZER "None"
-#define LEARNING_RATE 0.0f
+#define OPTIMIZER "RMSprop"
+#define LEARNING_RATE 0.01f
 #define REPLAY_MEMORY 10000
 #define BATCH_SIZE 8
-#define USE_LSTM false
-#define LSTM_SIZE 32
+#define USE_LSTM true
+#define LSTM_SIZE 64
 
 /*
 / TODO - Define Reward Parameters
 /
 */
 
-#define REWARD_WIN  0.0f
-#define REWARD_LOSS -0.0f
+#define REWARD_WIN  100.0f
+#define REWARD_LOSS -100.0f
+#define REWARD_MULTIPILER 10.0f
 
 // Define Object Names
 #define WORLD_NAME "arm_world"
@@ -70,7 +71,6 @@
 
 // Lock base rotation DOF (Add dof in header file if off)
 #define LOCKBASE true
-
 
 namespace gazebo
 {
@@ -134,21 +134,20 @@ void ArmPlugin::Load(physics::ModelPtr _parent, sdf::ElementPtr /*_sdf*/)
 	cameraNode->Init();
 	
 	/*
-	/ TODO - Subscribe to camera topic
+	/ TODO - Subscribe to camera topic CHECKED
 	/
 	*/
-	
-	//cameraSub = None;
+	cameraSub = cameraNode->Subscribe("/gazebo/arm_world/camera/link/camera/image", &ArmPlugin::onCameraMsg, this);
 
 	// Create our node for collision detection
 	collisionNode->Init();
 		
 	/*
-	/ TODO - Subscribe to prop collision topic
+	/ TODO - Subscribe to prop collision topic CHECKED
 	/
 	*/
 	
-	//collisionSub = None;
+	collisionSub = collisionNode->Subscribe("/gazebo/arm_world/tube/tube_link/my_contact", &ArmPlugin::onCollisionMsg, this);
 
 	// Listen to the update event. This event is broadcast every simulation iteration.
 	this->updateConnection = event::Events::ConnectWorldUpdateBegin(boost::bind(&ArmPlugin::OnUpdate, this, _1));
@@ -167,7 +166,14 @@ bool ArmPlugin::createAgent()
 	/
 	*/
 	
-	agent = NULL;
+	agent = dqnAgent::Create(INPUT_WIDTH, INPUT_HEIGHT, INPUT_CHANNELS,
+	                         DOF * 2,
+							 OPTIMIZER,
+							 LEARNING_RATE,
+	                         REPLAY_MEMORY,
+							 BATCH_SIZE,
+							 GAMMA, EPS_START, EPS_END, EPS_DECAY,
+							 USE_LSTM, ALLOW_RANDOM, DEBUG_DQN);
 
 	if( !agent )
 	{
@@ -263,18 +269,18 @@ void ArmPlugin::onCollisionMsg(ConstContactsPtr &contacts)
 		/
 		*/
 		
-		/*
-		
-		if (collisionCheck)
-		{
-			rewardHistory = None;
+		bool collisionCheckArm = (strcmp(contacts->contact(i).collision1().c_str(), COLLISION_ITEM) == 0) &&
+		                         (strcmp(contacts->contact(i).collision2().c_str(), COLLISION_POINT) == 0);
 
-			newReward  = None;
-			endEpisode = None;
+		if (collisionCheckArm)
+		{
+			rewardHistory = REWARD_WIN;
+
+			newReward  = true;
+			endEpisode = true;
 
 			return;
 		}
-		*/
 		
 	}
 }
@@ -354,7 +360,7 @@ bool ArmPlugin::updateAgent()
 	/ TODO - Increase or decrease the joint position based on whether the action is even or odd
 	/
 	*/
-	float joint = 0.0; // TODO - Set joint position based on whether action is even or odd.
+	float joint = ref[action/2] + (1 - action % 2) * 0.1 - (action % 2) * 0.1; // TODO - Set joint position based on whether action is even or odd.
 
 	// limit the joint to the specified range
 	if( joint < JOINT_MIN )
@@ -578,27 +584,26 @@ void ArmPlugin::OnUpdate(const common::UpdateInfo& updateInfo)
 		/
 		*/
 		
-		
-		/*if(checkGroundContact)
+		bool checkGroundContact = (gripBBox.max.z <= groundContact) && (gripBBox.min.z <= groundContact);
+
+		if(checkGroundContact)
 		{
 						
 			if(DEBUG){printf("GROUND CONTACT, EOE\n");}
 
-			rewardHistory = None;
-			newReward     = None;
-			endEpisode    = None;
+			rewardHistory = REWARD_LOSS;
+			newReward     = true;
+			endEpisode    = true;
 		}
-		*/
 		
 		/*
 		/ TODO - Issue an interim reward based on the distance to the object
 		/
 		*/ 
 		
-		/*
 		if(!checkGroundContact)
 		{
-			const float distGoal = 0; // compute the reward from distance to the goal
+			const float distGoal = BoxDistance(propBBox, gripBBox); // compute the reward from distance to the goal
 
 			if(DEBUG){printf("distance('%s', '%s') = %f\n", gripper->GetName().c_str(), prop->model->GetName().c_str(), distGoal);}
 
@@ -608,13 +613,14 @@ void ArmPlugin::OnUpdate(const common::UpdateInfo& updateInfo)
 				const float distDelta  = lastGoalDistance - distGoal;
 
 				// compute the smoothed moving average of the delta of the distance to the goal
-				avgGoalDelta  = 0.0;
-				rewardHistory = None;
-				newReward     = None;	
+				double alpha = 0.3;
+				avgGoalDelta  = (avgGoalDelta * alpha) + (distDelta * (1 - alpha));
+				rewardHistory = tanh(avgGoalDelta) * REWARD_LOSS;
+				newReward     = true;	
 			}
 
 			lastGoalDistance = distGoal;
-		} */
+		}
 	}
 
 	// issue rewards and train DQN
