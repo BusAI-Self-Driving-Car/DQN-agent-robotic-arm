@@ -51,7 +51,6 @@
 
 #define REWARD_WIN  100.0f
 #define REWARD_LOSS -100.0f
-#define REWARD_MULTIPILER 20.0f
 #define ALPHA 0.9f
 
 // Define Object Names
@@ -96,7 +95,7 @@ ArmPlugin::ArmPlugin() : ModelPlugin(), cameraNode(new gazebo::transport::Node()
     vel[n] = 0.0f;
   }
 
-  agent          = NULL;
+  agent            = NULL;
   inputState       = NULL;
   inputBuffer[0]   = NULL;
   inputBuffer[1]   = NULL;
@@ -117,8 +116,8 @@ ArmPlugin::ArmPlugin() : ModelPlugin(), cameraNode(new gazebo::transport::Node()
   animationStep    = 0;
   lastGoalDistance = 0.0f;
   avgGoalDelta     = 0.0f;
-  successfulGrabs = 0;
-  totalRuns       = 0;
+  successfulGrabs  = 0;
+  totalRuns        = 0;
 }
 
 
@@ -135,7 +134,7 @@ void ArmPlugin::Load(physics::ModelPtr _parent, sdf::ElementPtr /*_sdf*/)
   cameraNode->Init();
 
   /*
-  / TODO - Subscribe to camera topic CHECKED
+  / TODO - Subscribe to camera topic
   /
   */
   cameraSub = cameraNode->Subscribe("/gazebo/arm_world/camera/link/camera/image", &ArmPlugin::onCameraMsg, this);
@@ -144,7 +143,7 @@ void ArmPlugin::Load(physics::ModelPtr _parent, sdf::ElementPtr /*_sdf*/)
   collisionNode->Init();
 
   /*
-  / TODO - Subscribe to prop collision topic CHECKED
+  / TODO - Subscribe to prop collision topic
   /
   */
 
@@ -168,12 +167,12 @@ bool ArmPlugin::createAgent()
 
   agent = dqnAgent::Create(INPUT_WIDTH, INPUT_HEIGHT, INPUT_CHANNELS,
                            DOF * 2,
-               OPTIMIZER,
-               LEARNING_RATE,
-                             REPLAY_MEMORY,
-               BATCH_SIZE,
-               GAMMA, EPS_START, EPS_END, EPS_DECAY,
-               USE_LSTM, LSTM_SIZE, ALLOW_RANDOM, DEBUG_DQN);
+                           OPTIMIZER,
+                           LEARNING_RATE,
+                           REPLAY_MEMORY,
+                           BATCH_SIZE,
+                           GAMMA, EPS_START, EPS_END, EPS_DECAY,
+                           USE_LSTM, LSTM_SIZE, ALLOW_RANDOM, DEBUG_DQN);
 
   if( !agent )
   {
@@ -243,7 +242,6 @@ void ArmPlugin::onCameraMsg(ConstImageStampedPtr &_msg)
   newState = true;
 
   if(DEBUG){printf("camera %i x %i  %i bpp  %i bytes\n", width, height, bpp, size);}
-
 }
 
 
@@ -318,8 +316,6 @@ bool ArmPlugin::updateAgent()
 
   if(DEBUG){printf("ArmPlugin - agent selected action %i\n", action);}
 
-
-
 #if VELOCITY_CONTROL
   // if the action is even, increase the joint position by the delta parameter
   // if the action is odd,  decrease the joint position by the delta parameter
@@ -355,6 +351,7 @@ bool ArmPlugin::updateAgent()
       vel[n] = 0.0f;
     }
   }
+
 #else
 
   /*
